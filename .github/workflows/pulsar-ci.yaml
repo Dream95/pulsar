@@ -128,6 +128,8 @@ jobs:
       - name: checkout
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Detect changed files
         if: ${{ github.event_name == 'pull_request' }}
@@ -222,6 +224,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -341,6 +345,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -466,6 +472,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -556,6 +564,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -689,6 +699,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -823,6 +835,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -911,6 +925,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -939,6 +955,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1094,6 +1112,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1227,6 +1247,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1329,6 +1351,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1455,6 +1479,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1478,6 +1504,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1519,6 +1547,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1580,6 +1610,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -1709,6 +1741,8 @@ jobs:
       - name: checkout
         if: ${{ needs.preconditions.outputs.docs_only != 'true' }}
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         if: ${{ needs.preconditions.outputs.docs_only != 'true' }}

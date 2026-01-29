@@ -43,6 +43,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Detect changed files
         id: changes
@@ -80,6 +82,8 @@ jobs:
     steps:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
@@ -89,6 +93,14 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
         id: go
+
+      - name: Cache Go tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/bin
+            pulsar-function-go/bin
+          key: ${{ runner.os }}-go-tools-${{ matrix.go-version }}-${{ hashFiles('pulsar-function-go/golangci.yml') }}
 
       - name: InstallTool
         run: |

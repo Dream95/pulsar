@@ -75,6 +75,8 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm

@@ -52,6 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
+          fetch-depth: 1
 
       - name: Tune Runner VM
         uses: ./.github/actions/tune-runner-vm
