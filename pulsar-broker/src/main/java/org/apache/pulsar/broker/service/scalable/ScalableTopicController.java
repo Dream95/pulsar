@@ -1106,7 +1106,8 @@ public class ScalableTopicController {
                 topicName, segment.hashRange(), segment.segmentId());
         return "persistent://" + segmentTopicName.getTenant() + "/"
                 + segmentTopicName.getNamespacePortion() + "/"
-                + segmentTopicName.getLocalName();
+                + segmentTopicName.getLocalName() + "/"
+                + segmentTopicName.getSegmentDescriptor();
     }
 
     private CompletableFuture<Void> terminateSegmentTopic(String segmentTopicName) {
