@@ -27,11 +27,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.common.nar.NarClassLoader;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
@@ -40,8 +38,8 @@ import org.testng.annotations.Test;
 @Test
 public class ConnectorUtilsReloadTest {
 
-    private static void closeEvicted(Pair<TreeMap<String, Connector>, List<Connector>> reload) throws Exception {
-        for (Connector c : reload.getRight()) {
+    private static void closeEvicted(ReloadConnectorsResult reload) throws Exception {
+        for (Connector c : reload.connectorsToClose()) {
             c.close();
         }
     }
@@ -71,7 +69,7 @@ public class ConnectorUtilsReloadTest {
      * pre-reload connector would then hit {@link IllegalStateException} on lazy use.
      * <p>
      * Incremental reload must evict nothing, reuse the same instance, and leave that instance usable
-     * after the caller closes only {@link Pair#getRight()}.
+     * after the caller closes only {@link ReloadConnectorsResult#connectorsToClose()}.
      */
     @Test
     public void reloadUnchangedNarEvictsNothingAndKeepsSameConnectorUsable() throws Exception {
@@ -84,11 +82,11 @@ public class ConnectorUtilsReloadTest {
         Connector c1 = first.get("c-one");
         c1.getConnectorFunctionPackage();
 
-        Pair<TreeMap<String, Connector>, List<Connector>> reload = ConnectorUtils.reloadConnectors(
+        ReloadConnectorsResult reload = ConnectorUtils.reloadConnectors(
                 first, dir.toString(), NarClassLoader.DEFAULT_NAR_EXTRACTION_DIR, false);
-        assertTrue(reload.getRight().isEmpty());
+        assertTrue(reload.connectorsToClose().isEmpty());
         closeEvicted(reload);
-        TreeMap<String, Connector> second = reload.getLeft();
+        TreeMap<String, Connector> second = reload.connectors();
 
         assertSame(second.get("c-one"), c1);
         c1.getConnectorFunctionPackage();
@@ -108,10 +106,10 @@ public class ConnectorUtilsReloadTest {
         updated.setDescription("changed");
         writeMinimalNar(nar, updated);
 
-        Pair<TreeMap<String, Connector>, List<Connector>> reload = ConnectorUtils.reloadConnectors(
+        ReloadConnectorsResult reload = ConnectorUtils.reloadConnectors(
                 first, dir.toString(), NarClassLoader.DEFAULT_NAR_EXTRACTION_DIR, false);
         closeEvicted(reload);
-        TreeMap<String, Connector> second = reload.getLeft();
+        TreeMap<String, Connector> second = reload.connectors();
 
         assertNotSame(second.get("c-one"), before);
         assertThrows(IllegalStateException.class, before::getConnectorFunctionPackage);
@@ -130,10 +128,10 @@ public class ConnectorUtilsReloadTest {
         Connector removed = first.get("conn-b");
         Files.delete(nar2);
 
-        Pair<TreeMap<String, Connector>, List<Connector>> reload = ConnectorUtils.reloadConnectors(
+        ReloadConnectorsResult reload = ConnectorUtils.reloadConnectors(
                 first, dir.toString(), NarClassLoader.DEFAULT_NAR_EXTRACTION_DIR, false);
         closeEvicted(reload);
-        TreeMap<String, Connector> second = reload.getLeft();
+        TreeMap<String, Connector> second = reload.connectors();
 
         assertEquals(second.size(), 1);
         assertSame(second.get("conn-a"), first.get("conn-a"));

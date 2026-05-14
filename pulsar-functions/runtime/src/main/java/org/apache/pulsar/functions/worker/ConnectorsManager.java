@@ -27,12 +27,12 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.CustomLog;
 import lombok.Getter;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pulsar.common.io.ConfigFieldDefinition;
 import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.functions.runtime.thread.ThreadRuntimeFactory;
 import org.apache.pulsar.functions.utils.io.Connector;
 import org.apache.pulsar.functions.utils.io.ConnectorUtils;
+import org.apache.pulsar.functions.utils.io.ReloadConnectorsResult;
 
 @CustomLog
 public class ConnectorsManager implements AutoCloseable {
@@ -93,13 +93,13 @@ public class ConnectorsManager implements AutoCloseable {
     public void reloadConnectors(WorkerConfig workerConfig) throws IOException {
         boolean enableClassloading = workerConfig.getEnableClassloadingOfBuiltinFiles()
                 || ThreadRuntimeFactory.class.getName().equals(workerConfig.getFunctionRuntimeFactoryClassName());
-        Pair<TreeMap<String, Connector>, List<Connector>> reload = ConnectorUtils.reloadConnectors(
+        ReloadConnectorsResult reload = ConnectorUtils.reloadConnectors(
                 this.connectors,
                 workerConfig.getConnectorsDirectory(),
                 workerConfig.getNarExtractionDirectory(),
                 enableClassloading);
-        this.connectors = reload.getLeft();
-        closeConnectors(reload.getRight());
+        this.connectors = reload.connectors();
+        closeConnectors(reload.connectorsToClose());
     }
 
     @Override

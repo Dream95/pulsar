@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -38,8 +39,6 @@ import net.bytebuddy.description.field.FieldDescription;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDefinition;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pulsar.common.io.ConfigFieldDefinition;
 import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.common.nar.FileUtils;
@@ -60,7 +59,11 @@ public class ConnectorUtils {
      * Computes MD5 digest of a file as lower-case hex (for connector archive identity on reload).
      */
     public static String computeArchiveMd5Hex(Path path) throws IOException {
-        return FileUtils.calculateMd5Hex(path.toAbsolutePath().normalize().toFile());
+        return calculateMd5Hex(path.toAbsolutePath().normalize().toFile());
+    }
+
+    private static String calculateMd5Hex(File file) throws IOException {
+        return HexFormat.of().formatHex(FileUtils.calculateMd5sum(file));
     }
 
     /**
@@ -201,17 +204,18 @@ public class ConnectorUtils {
      * Reloads connectors from disk against {@code previous}, reusing {@link Connector} instances when path and
      * archive MD5 are unchanged (keeps class loaders open). New or changed archives get new instances.
      * <p>
-     * {@link Pair#getRight()} lists connectors evicted from the active set (replaced or no longer present on disk);
-     * the caller must {@link Connector#close()} each (typically via {@code ConnectorsManager}).
+     * {@link ReloadConnectorsResult#connectorsToClose()} lists connectors evicted from the active set (replaced or
+     * no longer present on disk); the caller must {@link Connector#close()} each (typically via
+     * {@code ConnectorsManager}).
      *
      * @param previous                 connectors from the previous scan (may be empty, never null)
      * @param connectorsDirectory      same semantics as {@link #searchForConnectors}
      * @param narExtractionDirectory   same semantics as {@link #searchForConnectors}
      * @param enableClassloading       same semantics as {@link #searchForConnectors}
-     * @return left: new map keyed by connector name (reused values are identical instances from {@code previous});
-     *         right: connectors the caller should close
+     * @return new map keyed by connector name (reused values are identical instances from {@code previous}) and
+     *         connectors the caller should close
      */
-    public static Pair<TreeMap<String, Connector>, List<Connector>> reloadConnectors(
+    public static ReloadConnectorsResult reloadConnectors(
             TreeMap<String, Connector> previous,
             String connectorsDirectory,
             String narExtractionDirectory,
@@ -224,7 +228,7 @@ public class ConnectorUtils {
         Path dir = Paths.get(connectorsDirectory).toAbsolutePath().normalize();
         if (!dir.toFile().exists()) {
             toClose.addAll(remaining.values());
-            return ImmutablePair.of(next, toClose);
+            return new ReloadConnectorsResult(next, toClose);
         }
 
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.nar")) {
@@ -255,6 +259,6 @@ public class ConnectorUtils {
             }
         }
         toClose.addAll(remaining.values());
-        return ImmutablePair.of(next, toClose);
+        return new ReloadConnectorsResult(next, toClose);
     }
 }

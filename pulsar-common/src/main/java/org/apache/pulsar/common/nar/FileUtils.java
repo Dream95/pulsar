@@ -32,7 +32,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HexFormat;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import lombok.CustomLog;
@@ -56,7 +55,7 @@ public class FileUtils {
      * @throws IOException
      *             if cannot read file
      */
-    protected static byte[] calculateMd5sum(final File file) throws IOException {
+    public static byte[] calculateMd5sum(final File file) throws IOException {
         try (final FileInputStream inputStream = new FileInputStream(file)) {
             // codeql[java/weak-cryptographic-algorithm] - md5 is sufficient for this use case
             final MessageDigest md5 = MessageDigest.getInstance("md5");
@@ -73,17 +72,6 @@ public class FileUtils {
         } catch (NoSuchAlgorithmException nsae) {
             throw new IllegalArgumentException(nsae);
         }
-    }
-
-    /**
-     * Calculates the MD5 digest of the specified file as hexadecimal.
-     *
-     * @param file file to digest
-     * @return MD5 hex string
-     * @throws IOException if the file cannot be read
-     */
-    public static String calculateMd5Hex(File file) throws IOException {
-        return HexFormat.of().formatHex(calculateMd5sum(file));
     }
 
     public static void ensureDirectoryExistAndCanReadAndWrite(final File dir) throws IOException {
