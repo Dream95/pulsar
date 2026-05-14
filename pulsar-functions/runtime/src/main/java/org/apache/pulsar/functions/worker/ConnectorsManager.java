@@ -21,11 +21,13 @@ package org.apache.pulsar.functions.worker;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.CustomLog;
 import lombok.Getter;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pulsar.common.io.ConfigFieldDefinition;
 import org.apache.pulsar.common.io.ConnectorDefinition;
 import org.apache.pulsar.functions.runtime.thread.ThreadRuntimeFactory;
@@ -89,9 +91,15 @@ public class ConnectorsManager implements AutoCloseable {
     }
 
     public void reloadConnectors(WorkerConfig workerConfig) throws IOException {
-        TreeMap<String, Connector> oldConnectors = connectors;
-        this.connectors = createConnectors(workerConfig);
-        closeConnectors(oldConnectors);
+        boolean enableClassloading = workerConfig.getEnableClassloadingOfBuiltinFiles()
+                || ThreadRuntimeFactory.class.getName().equals(workerConfig.getFunctionRuntimeFactoryClassName());
+        Pair<TreeMap<String, Connector>, List<Connector>> reload = ConnectorUtils.reloadConnectors(
+                this.connectors,
+                workerConfig.getConnectorsDirectory(),
+                workerConfig.getNarExtractionDirectory(),
+                enableClassloading);
+        this.connectors = reload.getLeft();
+        closeConnectors(reload.getRight());
     }
 
     @Override
@@ -99,14 +107,18 @@ public class ConnectorsManager implements AutoCloseable {
         closeConnectors(connectors);
     }
 
-    private void closeConnectors(TreeMap<String, Connector> connectorMap) {
-        connectorMap.values().forEach(connector -> {
+    private void closeConnectors(Collection<Connector> connectors) {
+        connectors.forEach(connector -> {
             try {
                 connector.close();
             } catch (Exception e) {
                 log.warn().exception(e).log("Failed to close connector");
             }
         });
+    }
+
+    private void closeConnectors(TreeMap<String, Connector> connectorMap) {
+        closeConnectors(connectorMap.values());
         connectorMap.clear();
     }
 
