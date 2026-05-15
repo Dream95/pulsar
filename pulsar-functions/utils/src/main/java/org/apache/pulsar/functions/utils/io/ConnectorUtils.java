@@ -245,6 +245,11 @@ public class ConnectorUtils {
                         next.put(name, prev);
                     } else {
                         if (prev != null) {
+                            log.info()
+                                    .attr("connector", name)
+                                    .attr("archive", archive)
+                                    .attr("previousArchive", prev.getArchivePath())
+                                    .log("Reloading changed connector");
                             toClose.add(prev);
                         }
                         next.put(name, new Connector(archive, cntDef, narExtractionDirectory, enableClassloading,

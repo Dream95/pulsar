@@ -50,10 +50,14 @@ public class ConnectorsManager implements AutoCloseable {
     }
 
     private static TreeMap<String, Connector> createConnectors(WorkerConfig workerConfig) throws IOException {
-        boolean enableClassloading = workerConfig.getEnableClassloadingOfBuiltinFiles()
-                || ThreadRuntimeFactory.class.getName().equals(workerConfig.getFunctionRuntimeFactoryClassName());
+        boolean enableClassloading = isEnableClassloading(workerConfig);
         return ConnectorUtils.searchForConnectors(workerConfig.getConnectorsDirectory(),
                 workerConfig.getNarExtractionDirectory(), enableClassloading);
+    }
+
+    private static boolean isEnableClassloading(WorkerConfig workerConfig) {
+        return workerConfig.getEnableClassloadingOfBuiltinFiles()
+                || ThreadRuntimeFactory.class.getName().equals(workerConfig.getFunctionRuntimeFactoryClassName());
     }
 
     @VisibleForTesting
@@ -91,13 +95,11 @@ public class ConnectorsManager implements AutoCloseable {
     }
 
     public void reloadConnectors(WorkerConfig workerConfig) throws IOException {
-        boolean enableClassloading = workerConfig.getEnableClassloadingOfBuiltinFiles()
-                || ThreadRuntimeFactory.class.getName().equals(workerConfig.getFunctionRuntimeFactoryClassName());
         ReloadConnectorsResult reload = ConnectorUtils.reloadConnectors(
                 this.connectors,
                 workerConfig.getConnectorsDirectory(),
                 workerConfig.getNarExtractionDirectory(),
-                enableClassloading);
+                isEnableClassloading(workerConfig));
         this.connectors = reload.connectors();
         closeConnectors(reload.connectorsToClose());
     }
