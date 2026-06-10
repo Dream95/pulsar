@@ -107,6 +107,7 @@ public class PersistentSubscriptionTest {
         doReturn("mockCursor").when(cursorMock).getName();
         doReturn(PositionFactory.create(1, 50)).when(cursorMock).getMarkDeletedPosition();
         doReturn(ledgerMock).when(cursorMock).getManagedLedger();
+        doReturn(true).when(cursorMock).isDurable();
         doReturn(managedLedgerConfigMock).when(ledgerMock).getConfig();
         doReturn(false).when(managedLedgerConfigMock).isAutoSkipNonRecoverableData();
 

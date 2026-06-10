@@ -1593,6 +1593,7 @@ public class TransactionTest extends TransactionTestBase {
         // Mock cursor for subscription.
         ManagedCursor cursorSubscription = mock(ManagedCursor.class);
         doReturn(Codec.encode("sub-a")).when(cursorSubscription).getName();
+        doReturn(true).when(cursorSubscription).isDurable();
         doThrow(new RuntimeException("1")).when(cursorSubscription).updateLastActive();
         // Create subscription.
         String subscriptionName = "sub-a";
