@@ -51,6 +51,7 @@ import org.apache.pulsar.broker.TransactionMetadataStoreService;
 import org.apache.pulsar.broker.service.BrokerService;
 import org.apache.pulsar.broker.service.Topic;
 import org.apache.pulsar.broker.service.persistent.PersistentSubscription;
+import org.apache.pulsar.broker.service.persistent.PersistentTopic;
 import org.apache.pulsar.broker.transaction.TransactionTestBase;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.DeadLetterPolicy;
@@ -60,6 +61,7 @@ import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
@@ -929,6 +931,45 @@ public class TransactionEndToEndTest extends TransactionTestBase {
         producer.close();
         consumer.close();
         admin.topics().delete(normalTopic, true);
+    }
+
+    @Test
+    public void testReaderSkipsTransactionPendingAck() throws Exception {
+        String topic = BrokerTestUtil.newUniqueName("persistent://" + NAMESPACE1 + "/reader-txn");
+        admin.topics().createNonPartitionedTopic(topic);
+
+        @Cleanup
+        Producer<byte[]> producer = pulsarClient.newProducer()
+                .topic(topic)
+                .enableBatching(false)
+                .create();
+
+        Transaction txn = getTxn();
+        int messageCnt = 5;
+        for (int i = 0; i < messageCnt; i++) {
+            producer.newMessage(txn).value(("msg-" + i).getBytes(UTF_8)).send();
+        }
+        txn.commit().get();
+
+        Reader<byte[]> reader = pulsarClient.newReader()
+                .topic(topic)
+                .startMessageId(MessageId.earliest)
+                .create();
+        Awaitility.await().until(reader::isConnected);
+
+        String subName = ((ReaderImpl<byte[]>) reader).getConsumer().getSubscription();
+        PersistentTopic persistentTopic = (PersistentTopic) getPulsarServiceList().get(0).getBrokerService()
+                .getTopic(topic, false).get().get();
+        PersistentSubscription subscription = persistentTopic.getSubscription(subName);
+        Assert.assertFalse(subscription.checkIfPendingAckStoreInit());
+
+        for (int i = 0; i < messageCnt; i++) {
+            Message<byte[]> message = reader.readNext(waitTimeForCanReceiveMsgInSec, TimeUnit.SECONDS);
+            Assert.assertNotNull(message);
+            Assert.assertEquals(new String(message.getValue(), UTF_8), "msg-" + i);
+        }
+
+        admin.topics().delete(topic, true);
     }
 
     public Transaction getTxn() throws Exception {
