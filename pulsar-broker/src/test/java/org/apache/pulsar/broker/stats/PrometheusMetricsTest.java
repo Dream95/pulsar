@@ -1186,6 +1186,13 @@ public class PrometheusMetricsTest extends BrokerTestBase {
 
         Multimap<String, Metric> metrics = parseMetrics(metricsStr);
 
+        var topic1Stats = admin.topics().getStats("persistent://my-property/my-ns/my-topic1");
+        var topic2Stats = admin.topics().getStats("persistent://my-property/my-ns/my-topic2");
+        String topic1ConsumerAddress =
+                topic1Stats.getSubscriptions().get("test").getConsumers().get(0).getAddress();
+        String topic2ConsumerAddress =
+                topic2Stats.getSubscriptions().get("test").getConsumers().get(0).getAddress();
+
         metrics.entries().forEach(e -> {
             System.out.println(e.getKey() + ": " + e.getValue());
         });
@@ -1202,20 +1209,24 @@ public class PrometheusMetricsTest extends BrokerTestBase {
         assertEquals(cm.get(0).tags.get("namespace"), "my-property/my-ns");
         assertEquals(cm.get(0).tags.get("topic"), "persistent://my-property/my-ns/my-topic1");
         assertEquals(cm.get(0).tags.get("subscription"), "test");
+        assertNull(cm.get(0).tags.get("consumer_address"));
 
         assertEquals(cm.get(1).tags.get("namespace"), "my-property/my-ns");
         assertEquals(cm.get(1).tags.get("topic"), "persistent://my-property/my-ns/my-topic1");
         assertEquals(cm.get(1).tags.get("subscription"), "test");
         assertEquals(cm.get(1).tags.get("consumer_id"), "0");
+        assertEquals(cm.get(1).tags.get("consumer_address"), topic1ConsumerAddress);
 
         assertEquals(cm.get(2).tags.get("namespace"), "my-property/my-ns");
         assertEquals(cm.get(2).tags.get("topic"), "persistent://my-property/my-ns/my-topic2");
         assertEquals(cm.get(2).tags.get("subscription"), "test");
+        assertNull(cm.get(2).tags.get("consumer_address"));
 
         assertEquals(cm.get(3).tags.get("namespace"), "my-property/my-ns");
         assertEquals(cm.get(3).tags.get("topic"), "persistent://my-property/my-ns/my-topic2");
         assertEquals(cm.get(3).tags.get("subscription"), "test");
         assertEquals(cm.get(3).tags.get("consumer_id"), "1");
+        assertEquals(cm.get(3).tags.get("consumer_address"), topic2ConsumerAddress);
 
         cm = new ArrayList<>(metrics.get("pulsar_out_messages_total"));
         assertEquals(cm.size(), 4);
