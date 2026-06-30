@@ -617,7 +617,7 @@ class TopicStats {
         String[] extraLabels =
             mergeArrays(customLabelsAndValues, "subscription", subscription, "consumer_name", consumer.consumerName(),
                 "consumer_id", String.valueOf(consumer.consumerId()),
-                "consumer_address", consumer.getClientAddressAndPort());
+                "consumer_address", consumer.getClientAddress());
         writeTopicMetric(stream, metricName, value, cluster, namespace, topic, splitTopicAndPartitionIndexLabel,
             extraLabels);
     }
