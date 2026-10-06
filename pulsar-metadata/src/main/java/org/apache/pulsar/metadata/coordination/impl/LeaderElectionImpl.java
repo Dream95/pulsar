@@ -316,6 +316,8 @@ class LeaderElectionImpl<T> implements LeaderElection<T> {
                 .thenAccept(__ -> {
                             synchronized (LeaderElectionImpl.this) {
                                 leaderElectionState = LeaderElectionState.NoLeader;
+                                // Whether or not we deleted the node, a closed instance no longer observes
+                                // elections; don't keep reporting ourselves as leader.
                                 currentLeaderFuture = CompletableFuture.completedFuture(Optional.empty());
                             }
                         }
