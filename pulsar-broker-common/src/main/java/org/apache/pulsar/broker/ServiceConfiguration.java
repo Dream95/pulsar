@@ -1512,7 +1512,9 @@ public class ServiceConfiguration implements PulsarConfiguration {
             doc = "PIP-486 segments-vs-buckets lever: on consumer-driven scale-up, split only if the "
                     + "busiest segment's inbound msg/s is at or above this floor; below it the "
                     + "controller grows the segment's entry-buckets instead (a low-throughput topic "
-                    + "should not materialize physical segments just for consumer count)."
+                    + "should not materialize physical segments just for consumer count). Checkpoint "
+                    + "consumer groups drive splits only: they read whole segments, so more buckets "
+                    + "would not serve them."
     )
     private double scalableTopicSplitVsRebucketMinMsgRateInThreshold = 1_000;
 
@@ -3881,7 +3883,19 @@ public class ServiceConfiguration implements PulsarConfiguration {
 
     @FieldContext(
         category = CATEGORY_SCHEMA,
-        doc = "The list compatibility checkers to be used in schema registry"
+        doc = "The compatibility checker classes used by the schema registry. For opt-in PROTOBUF_NATIVE field "
+            + "checks, replace ProtobufNativeSchemaCompatibilityCheck with "
+            + "org.apache.pulsar.broker.service.schema.ProtobufNativeSchemaAdvancedCompatibilityCheck. "
+            + "Configure only one PROTOBUF_NATIVE checker and use the same selection on all brokers that can own "
+            + "a topic. Changes require a broker restart. Review retained history and consumer schemas before "
+            + "activation: reconnecting consumers can be rejected, even with an unchanged schema, when another "
+            + "selected historical version is incompatible or unsupported. A configured checker that cannot be "
+            + "instantiated fails broker startup. Restore the default entry before downgrading broker binaries. "
+            + "Advanced checks allow up to 100,000 work units per historical version and direction, with a lower "
+            + "limit for smaller descriptor graphs. Even a compatible optional-field addition under BACKWARD can "
+            + "exceed the cap for a flat message around 14,500 fields or a referenced enum around 16,700 values; "
+            + "the threshold depends on the descriptor graph. "
+            + "Check representative large schemas in staging before activation; the cap is not configurable."
     )
     private Set<String> schemaRegistryCompatibilityCheckers = Sets.newHashSet(
             "org.apache.pulsar.broker.service.schema.JsonSchemaCompatibilityCheck",

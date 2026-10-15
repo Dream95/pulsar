@@ -19,6 +19,7 @@
 package org.apache.pulsar.tests.performance.tools;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -76,9 +77,20 @@ public record IotScenario(String serviceUrl, Warmup warmup, Measurement measurem
      *
      * @param maxOutstanding the most messages in flight across the gateways
      * @param precreate open every gateway's producer of every topic before the first message
+     * @param precreateConcurrency with {@code precreate}, the most producers that the gateways create at the same
+     *                             time, in a random order of the gateways and topics; 1 creates them one at a time in
+     *                             order
      */
     public record Producer(int ioThreads, int listenerThreads, int maxOutstanding, boolean batchingEnabled,
-                           boolean precreate) {
+                           boolean precreate, Integer precreateConcurrency) {
+        /** The default of {@code precreateConcurrency}, for scenarios written before it existed. */
+        public static final int DEFAULT_PRECREATE_CONCURRENCY = 32;
+
+        public Producer {
+            if (precreateConcurrency == null) {
+                precreateConcurrency = DEFAULT_PRECREATE_CONCURRENCY;
+            }
+        }
     }
 
     /** The telemetry topics, named {@code <prefix><index>}. */
@@ -94,9 +106,60 @@ public record IotScenario(String serviceUrl, Warmup warmup, Measurement measurem
      * @param client the client resources that every pod's client shares
      * @param env the environment variables of the applications' container, which the launcher sets, such as
      *            {@code PULSAR_MEM}
+     * @param joinSeconds when each application opens its pods, in seconds after the measurement starts, 0 for at the
+     *                    start; empty for every application at the start. An application that joins later has its
+     *                    subscription from the start, so it catches up on the backlog that builds up until it joins
+     * @param caughtUpLatencyMillis an application that joined later has caught up when it first receives a measured
+     *                              message within this time of its publishing
+     * @param skipMessages how many messages of each topic each application that joins later skips before it joins:
+     *                     the launcher moves its subscription's position forward by that many entries, which are
+     *                     messages since the gateways mustn't batch then, so that the applications read the backlog
+     *                     from staggered positions; empty for none. An application that skips messages expects every
+     *                     message but those, each device's from the first one that it receives
+     * @param unloadBeforeJoin the launcher unloads every topic before the applications that join later join, after
+     *                         it has skipped their messages, so that they read the backlog from a topic loaded anew
+     * @param resetToMillis where each application that joins later resets its subscription to before it joins: the
+     *                      publish time this many milliseconds after the measurement's start, which the launcher
+     *                      resets the subscription to by timestamp on every topic once the gateways have finished;
+     *                      -1 for none, and empty for none at all. An application that resets its subscription
+     *                      expects as many messages as its backlog then has, each device's from the first one that it
+     *                      receives
      */
     public record Applications(int count, int podsPerApplication, String subscriptionPrefix, Client client,
-                               Map<String, String> env) {
+                               Map<String, String> env, List<Integer> joinSeconds, Integer caughtUpLatencyMillis,
+                               List<Long> skipMessages, boolean unloadBeforeJoin, List<Long> resetToMillis) {
+        /** The default of {@code caughtUpLatencyMillis}. */
+        public static final int DEFAULT_CAUGHT_UP_LATENCY_MILLIS = 1000;
+
+        public Applications {
+            // kept with any nulls, which the scenario's validation rejects with its message
+            joinSeconds = joinSeconds != null ? Collections.unmodifiableList(new ArrayList<>(joinSeconds)) : List.of();
+            skipMessages = skipMessages != null ? Collections.unmodifiableList(new ArrayList<>(skipMessages))
+                    : List.of();
+            resetToMillis = resetToMillis != null ? Collections.unmodifiableList(new ArrayList<>(resetToMillis))
+                    : List.of();
+            if (caughtUpLatencyMillis == null) {
+                caughtUpLatencyMillis = DEFAULT_CAUGHT_UP_LATENCY_MILLIS;
+            }
+        }
+
+        public Applications(int count, int podsPerApplication, String subscriptionPrefix, Client client,
+                            Map<String, String> env, List<Integer> joinSeconds, Integer caughtUpLatencyMillis) {
+            this(count, podsPerApplication, subscriptionPrefix, client, env, joinSeconds, caughtUpLatencyMillis,
+                    null, false);
+        }
+
+        public Applications(int count, int podsPerApplication, String subscriptionPrefix, Client client,
+                            Map<String, String> env, List<Integer> joinSeconds, Integer caughtUpLatencyMillis,
+                            List<Long> skipMessages, boolean unloadBeforeJoin) {
+            this(count, podsPerApplication, subscriptionPrefix, client, env, joinSeconds, caughtUpLatencyMillis,
+                    skipMessages, unloadBeforeJoin, null);
+        }
+
+        public Applications(int count, int podsPerApplication, String subscriptionPrefix, Client client,
+                            Map<String, String> env) {
+            this(count, podsPerApplication, subscriptionPrefix, client, env, null, null);
+        }
     }
 
     /** The applications' client resources: the event loop's and the listener thread pool's threads. */
@@ -176,8 +239,64 @@ public record IotScenario(String serviceUrl, Warmup warmup, Measurement measurem
                         && client.listenerThreads() >= 1,
                 "The gateways' and the applications' ioThreads and listenerThreads must be at least 1");
         require(producer.maxOutstanding() >= 1, "gateways.producer.maxOutstanding must be at least 1");
+        require(applications.joinSeconds().isEmpty() || applications.joinSeconds().size() == applications.count(),
+                "applications.joinSeconds must have a value for each of the " + applications.count()
+                        + " applications, or none");
+        // the joins count from the measurement's start, after the warmup
+        long warmupTotalSeconds = minimumRuntimeSeconds - durationSeconds;
+        require(applications.joinSeconds().stream().allMatch(seconds -> seconds != null && seconds >= 0
+                        && warmupTotalSeconds + seconds < timeoutSeconds),
+                "applications.joinSeconds must be at least 0 with no null value, and the warmup ("
+                        + warmupTotalSeconds + " s) and the latest join must be within timeoutSeconds");
+        require(applications.caughtUpLatencyMillis() >= 1, "applications.caughtUpLatencyMillis must be at least 1");
+        // as messageCount() counts them, which the fields aren't assigned for yet
+        long totalMessages = (warmupMessages > 0 ? warmupMessages : (long) warmupSeconds * rate) * warmupRounds
+                + (numberOfMessages > 0 ? numberOfMessages : (long) durationSeconds * rate);
+        require(applications.skipMessages().isEmpty() || applications.skipMessages().size() == applications.count(),
+                "applications.skipMessages must have a value for each of the " + applications.count()
+                        + " applications, or none");
+        for (int index = 0; index < applications.skipMessages().size(); index++) {
+            Long skipped = applications.skipMessages().get(index);
+            require(skipped != null && skipped >= 0, "applications.skipMessages must be at least 0 with no null value");
+            // An application that receives from the start can't skip what it may already have received
+            require(skipped == 0 || !applications.joinSeconds().isEmpty() && applications.joinSeconds().get(index) > 0,
+                    "applications.skipMessages: only an application that joins later, with joinSeconds above 0,"
+                            + " can skip messages, not application " + index);
+            require(skipped == 0 || Math.multiplyExact(skipped, (long) topics.count()) < totalMessages,
+                    "applications.skipMessages must leave messages to receive: application " + index + " skips "
+                            + skipped + " of each of the " + topics.count()
+                            + " topics");
+        }
+        // The launcher skips entries, which are the messages only when the gateways don't batch
+        require(applications.skipMessages().stream().allMatch(skipped -> skipped == null || skipped == 0)
+                        || !producer.batchingEnabled(),
+                "applications.skipMessages needs gateways.producer.batchingEnabled: false, since the launcher skips"
+                        + " entries");
+        require(applications.resetToMillis().isEmpty()
+                        || applications.resetToMillis().size() == applications.count(),
+                "applications.resetToMillis must have a value for each of the " + applications.count()
+                        + " applications, or none");
+        for (int index = 0; index < applications.resetToMillis().size(); index++) {
+            Long resetTo = applications.resetToMillis().get(index);
+            require(resetTo != null && resetTo >= -1,
+                    "applications.resetToMillis must be -1 for none, or at least 0, with no null value");
+            require(resetTo == -1 || !applications.joinSeconds().isEmpty() && applications.joinSeconds().get(index) > 0,
+                    "applications.resetToMillis: only an application that joins later, with joinSeconds above 0,"
+                            + " can reset its subscription, not application " + index);
+            require(resetTo == -1 || applications.skipMessages().isEmpty()
+                            || applications.skipMessages().get(index) == null
+                            || applications.skipMessages().get(index) == 0,
+                    "applications.resetToMillis: application " + index + " can't also skip messages");
+        }
+        // The applications expect as many messages as the backlog has, which counts messages only without batching
+        require(applications.resetToMillis().stream().allMatch(resetTo -> resetTo == null || resetTo == -1)
+                        || !producer.batchingEnabled(),
+                "applications.resetToMillis needs gateways.producer.batchingEnabled: false");
+        require(!applications.unloadBeforeJoin() || applications.joinSeconds().stream()
+                        .anyMatch(seconds -> seconds != null && seconds > 0),
+                "applications.unloadBeforeJoin needs an application that joins later, with joinSeconds above 0");
+        require(producer.precreateConcurrency() >= 1, "gateways.producer.precreateConcurrency must be at least 1");
         if (timeoutSeconds < minimumRuntimeSeconds) {
-            long warmupTotalSeconds = minimumRuntimeSeconds - durationSeconds;
             throw new IllegalArgumentException(String.format(Locale.ROOT, "Invalid IoT scenario: timeoutSeconds is %d,"
                             + " but the workload needs %d s: %d s of warmup (%d round(s) of %d s%s) and %d s of"
                             + " measurement%s. The applications stop waiting at the timeout, so set timeoutSeconds to"
@@ -237,6 +356,62 @@ public record IotScenario(String serviceUrl, Warmup warmup, Measurement measurem
 
     public int podsPerApplication() {
         return applications.podsPerApplication();
+    }
+
+    /** When the application opens its pods, in seconds after the measurement starts; 0 for at the start. */
+    public int joinSeconds(int applicationIndex) {
+        return applications.joinSeconds().isEmpty() ? 0 : applications.joinSeconds().get(applicationIndex);
+    }
+
+    /** Whether any application joins after the measurement starts. */
+    public boolean hasLateApplications() {
+        return applications.joinSeconds().stream().anyMatch(seconds -> seconds > 0);
+    }
+
+    /** How many messages of each topic the application skips before it joins; 0 for none. */
+    public long skipMessages(int applicationIndex) {
+        return applications.skipMessages().isEmpty() ? 0 : applications.skipMessages().get(applicationIndex);
+    }
+
+    /** Where the application resets its subscription to, in milliseconds after the measurement's start; -1 for none. */
+    public long resetToMillis(int applicationIndex) {
+        return applications.resetToMillis().isEmpty() ? -1 : applications.resetToMillis().get(applicationIndex);
+    }
+
+    /**
+     * Whether the application receives each device's messages from the first one that it receives, since it skips
+     * messages or resets its subscription.
+     */
+    public boolean startsAtFirstSequence(int applicationIndex) {
+        return skipMessages(applicationIndex) > 0 || resetToMillis(applicationIndex) >= 0;
+    }
+
+    /**
+     * The messages that the application receives: every message but those it skips. For an application that resets
+     * its subscription, the backlog after the reset, which the launcher tells it.
+     */
+    public long expectedMessageCount(int applicationIndex) {
+        return messageCount() - Math.multiplyExact(skipMessages(applicationIndex), (long) topics.count());
+    }
+
+    /**
+     * Whether the launcher prepares the late applications' join, by skipping messages or unloading the topics, which
+     * they wait for.
+     */
+    public boolean preparesJoin() {
+        return applications.unloadBeforeJoin() || applications.skipMessages().stream().anyMatch(skipped -> skipped > 0)
+                || resetsSubscriptions();
+    }
+
+    /** Whether an application resets its subscription by timestamp before it joins. */
+    public boolean resetsSubscriptions() {
+        return applications.resetToMillis().stream().anyMatch(resetTo -> resetTo >= 0);
+    }
+
+    /** When the earliest application that joins later joins, in seconds after the measurement starts. */
+    public int earliestLateJoinSeconds() {
+        return applications.joinSeconds().stream().filter(seconds -> seconds > 0).mapToInt(Integer::intValue).min()
+                .orElseThrow(() -> new IllegalStateException("No application joins later"));
     }
 
     public long messageCount() {
