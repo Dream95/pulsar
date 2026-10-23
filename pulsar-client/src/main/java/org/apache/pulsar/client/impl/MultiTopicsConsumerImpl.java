@@ -27,7 +27,6 @@ import com.google.common.collect.Lists;
 import io.github.merlimat.slog.Logger;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -308,7 +307,10 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
             } else {
                 // Call receiveAsync() if the incoming queue is not full. Because this block is run with
                 // thenAcceptAsync, there is no chance for recursion that would lead to stack overflow.
-                receiveMessageFromConsumer(consumer, messages.size() > 0);
+                // A batch receive takes the consumer's queued messages; when there are none, it would wait for its
+                // timeout with a timer task and a hand-off to this executor for each received message, so a
+                // receiveAsync() waits for the next message instead.
+                receiveMessageFromConsumer(consumer, messages.size() > 0 && consumer.numMessagesInQueue() > 0);
             }
         }, internalPinnedExecutor).exceptionally(ex -> {
             if (ex instanceof PulsarClientException.AlreadyClosedException
@@ -674,6 +676,7 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
                 return failPendingReceive();
             }, internalPinnedExecutor)
             .whenComplete((r, ex) -> {
+                closeInterceptors();
                 if (ex == null) {
                     closeFuture.complete(null);
                 } else {
@@ -688,6 +691,7 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
     }
 
     private void cleanupMultiConsumer() {
+        clearIncomingMessages();
         if (unAckedMessageTracker != null) {
             unAckedMessageTracker.close();
         }
@@ -959,13 +963,12 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
             Message<T> message = incomingMessages.poll();
             checkState(message instanceof TopicMessageImpl);
             while (message != null) {
-                decreaseIncomingMessageSize(message);
                 MessageId messageId = message.getMessageId();
+                discardIncomingMessage(message);
                 if (!messageIds.contains(messageId)) {
                     messageIds.add(messageId);
                     break;
                 }
-                message.release();
                 message = incomingMessages.poll();
             }
         }
@@ -1700,8 +1703,7 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
             }
 
             @Override
-            public void close() throws IOException {
-                multiTopicInterceptors.close();
+            public void close() {
             }
         };
     }
